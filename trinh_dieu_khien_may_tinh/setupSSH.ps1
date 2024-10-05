@@ -1,7 +1,7 @@
 # Kiểm tra quyền admin
 $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
 if (-not $isAdmin) {
-    Write-Host "Script cần được chạy với quyền Administrator. Vui lòng chạy lại với quyền admin."
+    Write-Host "Script needs to be run with Administrator privileges. Please run again with admin rights."
     exit
 }
 
@@ -47,13 +47,13 @@ function Update-Script {
         Invoke-WebRequest -Uri $repoUrl -OutFile $tempFile
         if (Compare-Object -ReferenceObject (Get-Content $PSCommandPath) -DifferenceObject (Get-Content $tempFile)) {
             Copy-Item -Path $tempFile -Destination $PSCommandPath -Force
-            Write-Log "Script đã được cập nhật. Vui lòng khởi động lại script."
+            Write-Log "Script has been updated. Please restart the script."
             exit
         } else {
-            Write-Log "Script đã là phiên bản mới nhất."
+            Write-Log "Script is already the latest version."
         }
     } catch {
-        Write-Log "Lỗi khi cập nhật script: $_"
+        Write-Log "Error updating script: $_"
     } finally {
         Remove-Item -Path $tempFile -ErrorAction SilentlyContinue
     }
@@ -72,7 +72,7 @@ function Set-CustomScheduledTask {
     $existingTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     if ($existingTask) {
         Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
-        Write-Log "Đã xóa tác vụ '$TaskName' cũ để cập nhật"
+        Write-Log "Deleted old task '$TaskName' for update"
     }
     
     $action = New-ScheduledTaskAction -Execute $Command -Argument $Arguments
@@ -80,14 +80,14 @@ function Set-CustomScheduledTask {
     $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
     
     Register-ScheduledTask -TaskName $TaskName -Description $Description -Action $action -Trigger $Trigger -Settings $settings -Principal $principal -Force
-    Write-Log "Tác vụ '$TaskName' đã được tạo/cập nhật thành công"
+    Write-Log "Task '$TaskName' has been created/updated successfully"
 }
 
 # Hàm sao lưu cấu hình SSH
 function Backup-SSHConfig {
     $backupPath = "$PSScriptRoot\ssh_backup_$(Get-Date -Format 'yyyyMMddHHmmss').zip"
     Compress-Archive -Path "$HOME\.ssh" -DestinationPath $backupPath
-    Write-Log "Đã sao lưu cấu hình SSH vào $backupPath"
+    Write-Log "SSH configuration backed up to $backupPath"
 }
 
 # Hàm khôi phục cấu hình SSH
@@ -95,9 +95,9 @@ function Restore-SSHConfig {
     $latestBackup = Get-ChildItem "$PSScriptRoot\ssh_backup_*.zip" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if ($latestBackup) {
         Expand-Archive -Path $latestBackup.FullName -DestinationPath "$HOME\.ssh" -Force
-        Write-Log "Đã khôi phục cấu hình SSH từ $($latestBackup.FullName)"
+        Write-Log "SSH configuration restored from $($latestBackup.FullName)"
     } else {
-        Write-Log "Không tìm thấy bản sao lưu cấu hình SSH"
+        Write-Log "No SSH configuration backup found"
     }
 }
 
@@ -126,7 +126,7 @@ Bộ nhớ: $((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory / 1MB) 
     $credentials = New-Object System.Management.Automation.PSCredential ($config.yourEmail, $securePassword)
 
     Send-MailMessage -From $config.yourEmail -To $config.recipientEmail -Subject "Báo cáo trạng thái hệ thống" -Body $report -SmtpServer $config.smtpServer -Port $config.smtpPort -UseSsl -Credential $credentials
-    Write-Log "Đã gửi báo cáo trạng thái hệ thống"
+    Write-Log "System status report sent"
 }
 
 # Hàm thực hiện với cơ chế retry
@@ -162,7 +162,7 @@ function Invoke-WithRetry {
 # Hàm chính
 function Main {
     try {
-        Write-Log "Bắt đầu thiết lập SSH"
+        Write-Log "Starting SSH setup"
         
         Update-Script
         
@@ -171,7 +171,7 @@ function Main {
         # Cài đặt mô-đun gửi email nếu chưa có
         if (-not (Get-Module -ListAvailable -Name PSSendMail)) {
             Install-Module -Name PSSendMail -Force -Scope CurrentUser
-            Write-Log "Đã cài đặt mô-đun PSSendMail"
+            Write-Log "PSSendMail module installed"
         }
         
         # Lấy thông tin mạng tự động
@@ -179,14 +179,14 @@ function Main {
         $ipv4 = $networkInfo.IPAddress
         $subnetMask = $networkInfo.PrefixLength
         $defaultGateway = (Get-NetRoute | Where-Object { $_.DestinationPrefix -eq "0.0.0.0/0" }).NextHop
-        Write-Log "Đã lấy thông tin mạng"
+        Write-Log "Network information retrieved"
         
         Invoke-WithRetry -ScriptBlock {
             # Tạo cặp khóa SSH nếu chưa tồn tại
             $sshKeyPath = "$HOME\.ssh\id_$sshKeyType"
             if (-not (Test-Path -Path $sshKeyPath)) {
                 ssh-keygen -t $sshKeyType -b $sshKeyLength -f $sshKeyPath -q -N ""
-                Write-Log "Đã tạo cặp khóa SSH mới"
+                Write-Log "New SSH key pair created"
             }
             
             # Sao chép khóa công khai vào máy chủ
@@ -202,12 +202,12 @@ function Main {
                 Add-Content -Path $authorizedKeysPath -Value $publicKey
             } -ArgumentList $publicKey
             Remove-PSSession -Session $session
-            Write-Log "Đã sao chép khóa công khai vào máy chủ"
+            Write-Log "Public key copied to server"
             
             # Kiểm tra kết nối SSH
             $testConnection = ssh -o BatchMode=yes -o ConnectTimeout=5 $config.remoteUser@$ipv4 echo "Kết nối SSH thành công"
             if ($testConnection -eq "Kết nối SSH thành công") {
-                Write-Log "Kiểm tra kết nối SSH thành công"
+                Write-Log "SSH connection test successful"
             } else {
                 throw "Kiểm tra kết nối SSH thất bại"
             }
@@ -246,7 +246,7 @@ function Main {
 
         Invoke-WithRetry -ScriptBlock {
             Send-MailMessage -From $config.yourEmail -To $config.recipientEmail -Subject "Khóa SSH & Thông tin mạng chi tiết" -Body $emailBody -SmtpServer $config.smtpServer -Port $config.smtpPort -UseSsl -Credential $credentials
-            Write-Log "Email đã được gửi thành công"
+            Write-Log "Email sent successfully"
         }
         
         Backup-SSHConfig
@@ -261,13 +261,13 @@ function Main {
         $monitoringApiUrl = "http://127.0.0.1:5000/api/update-ssh-status"
         $sshStatus = Test-NetConnection -ComputerName localhost -Port 22
         Invoke-RestMethod -Uri $monitoringApiUrl -Method Post -Body @{status = $sshStatus.TcpTestSucceeded; hostname = $env:COMPUTERNAME}
-        Write-Log "Đã cập nhật trạng thái SSH trong hệ thống giám sát"
+        Write-Log "SSH status updated in monitoring system"
         
         Send-SystemStatusReport -config $config
         
-        Write-Log "Thiết lập hoàn tất thành công"
+        Write-Log "Setup completed successfully"
     } catch {
-        Write-Log "Đã xảy ra lỗi trong quá trình thiết lập: $_"
+        Write-Log "An error occurred during setup: $_"
         Restore-SSHConfig
     }
 }
