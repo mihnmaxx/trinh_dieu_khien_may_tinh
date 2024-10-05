@@ -71,16 +71,13 @@ function Update-Script {
 }
 function Configure-WinRM {
     Write-Log "Configuring WinRM..."
-    if ((Get-Service WinRM).Status -ne 'Running') {
-        Start-Service WinRM
-    }
-    Enable-PSRemoting -Force -SkipNetworkProfileCheck
+    Enable-PSRemoting -Force
     Set-Item WSMan:\localhost\Client\TrustedHosts -Value * -Force
     Set-Item WSMan:\localhost\Service\Auth\Basic -Value $true
-    Set-Item WSMan:\localhost\Service\AllowUnencrypted -Value $false
-    New-NetFirewallRule -DisplayName "Allow WinRM HTTPS" -Direction Inbound -LocalPort 5986 -Protocol TCP -Action Allow
+    Restart-Service WinRM
     Write-Log "WinRM configured successfully"
-}function Set-NetworkProfilePrivate {
+}
+function Set-NetworkProfilePrivate {
     $connections = Get-NetConnectionProfile
     foreach ($connection in $connections) {
         Set-NetConnectionProfile -InterfaceIndex $connection.InterfaceIndex -NetworkCategory Private
@@ -252,42 +249,29 @@ function Main {
         if (Test-Connection -ComputerName $ipv4 -Count 1 -Quiet) {
             $currentUser = $env:USERNAME
 
-            $credential = Get-Credential -Message "Nhập thông tin đăng nhập cho máy từ xa"
-            $session = $null
-            $attempts = 0
-            $maxAttempts = 3
-
-            while ($null -eq $session -and $attempts -lt $maxAttempts) {
+            Invoke-WithRetry -ScriptBlock {
+                $credential = Get-Credential -Message "Nhập thông tin đăng nhập cho máy từ xa"
+                $session = New-PSSession -ComputerName $ipv4 -Credential $credential -UseSSL -SessionOption (New-PSSessionOption -SkipCACheck -SkipCNCheck)
+    
+                if ($null -eq $session) {
+                    throw "Không thể tạo phiên từ xa"
+                }
+    
                 try {
-                    if ($attempts -eq 0) {
-                        $session = New-PSSession -ComputerName $ipv4 -Credential $credential -UseSSL -SessionOption (New-PSSessionOption -SkipCACheck -SkipCNCheck)
-                    } else {
-                        $session = New-PSSession -ComputerName $env:COMPUTERNAME -Credential $credential -UseSSL -SessionOption (New-PSSessionOption -SkipCACheck -SkipCNCheck)
-                    }
-                } catch {
-                    Write-Log "Attempt $($attempts + 1) failed: $_"
-                    $attempts++
-                    if ($attempts -lt $maxAttempts) {
-                        Write-Log "Retrying..."
-                        Start-Sleep -Seconds 5
-                    }
+                    Invoke-Command -Session $session -ScriptBlock {
+                        param($publicKey)
+                        $authorizedKeysPath = "$HOME\.ssh\authorized_keys"
+                        if (-not (Test-Path -Path $authorizedKeysPath)) {
+                            New-Item -ItemType File -Path $authorizedKeysPath -Force
+                        }
+                        Add-Content -Path $authorizedKeysPath -Value $publicKey
+                    } -ArgumentList $publicKey
+                    Write-Log "Public key copied to server"
+                }
+                finally {
+                    Remove-PSSession -Session $session
                 }
             }
-
-            if ($null -eq $session) {
-                throw "Failed to create remote session after $maxAttempts attempts"
-            }
-
-            Invoke-Command -Session $session -ScriptBlock {
-                param($publicKey)
-                $authorizedKeysPath = "$HOME\.ssh\authorized_keys"
-                if (-not (Test-Path -Path $authorizedKeysPath)) {
-                    New-Item -ItemType File -Path $authorizedKeysPath -Force
-                }
-                Add-Content -Path $authorizedKeysPath -Value $publicKey
-            } -ArgumentList $publicKey
-            Remove-PSSession -Session $session
-            Write-Log "Public key copied to server"
         } else {
             Write-Log "Unable to connect to the server at $ipv4"
         }
