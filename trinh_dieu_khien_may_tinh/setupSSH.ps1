@@ -48,8 +48,8 @@ function Update-Script {
     try {
         Invoke-WebRequest -Uri $repoUrl -OutFile $tempFile -ErrorAction Stop
         if (Test-Path $tempFile) {
-            if (Compare-Object -ReferenceObject (Get-Content $PSCommandPath) -DifferenceObject (Get-Content $tempFile)) {
-                Copy-Item -Path $tempFile -Destination $PSCommandPath -Force
+            if (Compare-Object -ReferenceObject (Get-Content $scriptPath) -DifferenceObject (Get-Content $tempFile)) {
+                Copy-Item -Path $tempFile -Destination $scriptPath -Force
                 Write-Log "Script has been updated. Please restart the script."
                 exit
             } else {
@@ -198,25 +198,26 @@ function Main {
         $subnetMask = $networkInfo.PrefixLength
         $defaultGateway = (Get-NetRoute | Where-Object { $_.DestinationPrefix -eq "0.0.0.0/0" }).NextHop
         Write-Log "Network information retrieved"
-        
         Invoke-WithRetry -ScriptBlock {
             # Tạo cặp khóa SSH nếu chưa tồn tại
             $sshKeyDirectory = Select-SSHKeyDirectory
             $sshKeyPath = Join-Path $sshKeyDirectory "id_$sshKeyType"
-            
+            $publicKeyPath = "$sshKeyPath.pub"
+
             if (-not (Test-Path -Path $sshKeyPath)) {
                 ssh-keygen -t $sshKeyType -b $sshKeyLength -f $sshKeyPath -N '""'
                 Write-Log "New SSH key pair created in $sshKeyDirectory"
             }
+
+            if (Test-Path $publicKeyPath) {
+                $publicKey = Get-Content -Path $publicKeyPath
+            } else {
+                throw "Public key file not found at $publicKeyPath"
+            }
         }
-        
-        # Sao chép khóa công khai vào máy chủ
-        $publicKeyPath = "$sshKeyPath.pub"
-        $publicKey = Get-Content -Path $publicKeyPath
-        
         # Add server connectivity check
         if (Test-Connection -ComputerName $ipv4 -Count 1 -Quiet) {
-            $session = New-PSSession -HostName $ipv4 -UserName $config.remoteUser
+            $session = New-PSSession -ComputerName $ipv4 -Credential (Get-Credential $config.remoteUser)
             Invoke-Command -Session $session -ScriptBlock {
                 param($publicKey)
                 $authorizedKeysPath = "$HOME\.ssh\authorized_keys"
