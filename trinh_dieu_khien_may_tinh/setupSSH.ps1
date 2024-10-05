@@ -44,13 +44,17 @@ function Update-Script {
     $tempFile = "$env:TEMP\setupSSH.ps1"
     
     try {
-        Invoke-WebRequest -Uri $repoUrl -OutFile $tempFile
-        if (Compare-Object -ReferenceObject (Get-Content $PSCommandPath) -DifferenceObject (Get-Content $tempFile)) {
-            Copy-Item -Path $tempFile -Destination $PSCommandPath -Force
-            Write-Log "Script has been updated. Please restart the script."
-            exit
+        Invoke-WebRequest -Uri $repoUrl -OutFile $tempFile -ErrorAction Stop
+        if (Test-Path $tempFile) {
+            if (Compare-Object -ReferenceObject (Get-Content $PSCommandPath) -DifferenceObject (Get-Content $tempFile)) {
+                Copy-Item -Path $tempFile -Destination $PSCommandPath -Force
+                Write-Log "Script has been updated. Please restart the script."
+                exit
+            } else {
+                Write-Log "Script is already the latest version."
+            }
         } else {
-            Write-Log "Script is already the latest version."
+            throw "Failed to download the script"
         }
     } catch {
         Write-Log "Error updating script: $_"
@@ -181,9 +185,15 @@ function Main {
         
         # Cài đặt mô-đun gửi email nếu chưa có
         if (-not (Get-Module -ListAvailable -Name PSSendMail)) {
-            Install-Module -Name PSSendMail -Force -Scope CurrentUser
-            Write-Log "PSSendMail module installed"
-        }
+            try {
+                Install-Module -Name PSSendMail -Force -Scope CurrentUser -ErrorAction Stop
+                Write-Log "PSSendMail module installed"
+            } catch {
+                Write-Log "Error installing PSSendMail module: $_"
+                Write-Log "Attempting to install from PSGallery..."
+                Install-Module -Name PSSendMail -Force -Scope CurrentUser -Repository PSGallery
+            }
+        }        
         
         # Lấy thông tin mạng tự động
         $networkInfo = Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -like "*Ethernet*" }
@@ -198,7 +208,7 @@ function Main {
             $sshKeyPath = Join-Path $sshKeyDirectory "id_$sshKeyType"
             
             if (-not (Test-Path -Path $sshKeyPath)) {
-                ssh-keygen -t $sshKeyType -b $sshKeyLength -f $sshKeyPath -q -N ""
+                ssh-keygen -t $sshKeyType -b $sshKeyLength -f $sshKeyPath -N '""'
                 Write-Log "New SSH key pair created in $sshKeyDirectory"
             }
         }
@@ -221,7 +231,7 @@ function Main {
             Remove-PSSession -Session $session
             Write-Log "Public key copied to server"
         } else {
-            throw "Unable to connect to the server at $ipv4"
+            Write-Log "Unable to connect to the server at $ipv4"
         }
             
             # Kiểm tra kết nối SSH
