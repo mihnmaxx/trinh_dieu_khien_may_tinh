@@ -26,7 +26,7 @@ function Read-Config {
         $config = Get-Content $configPath | ConvertFrom-Json
     } else {
         $config = @{
-            remoteUser = "tanduy"
+            remoteUser = $env:USERNAME
             yourEmail = "ng.duy1003@gmail.com"
             recipientEmail = "ng.duy1003@gmail.com"
             smtpServer = "smtp.gmail.com"
@@ -217,7 +217,10 @@ function Main {
         }
         # Add server connectivity check
         if (Test-Connection -ComputerName $ipv4 -Count 1 -Quiet) {
-            $session = New-PSSession -ComputerName $ipv4 -Credential (Get-Credential $config.remoteUser)
+            $currentUser = $env:USERNAME
+
+            # Sử dụng $currentUser thay vì $config.remoteUser
+            $session = New-PSSession -ComputerName $ipv4 -Credential (Get-Credential $currentUser)
             Invoke-Command -Session $session -ScriptBlock {
                 param($publicKey)
                 $authorizedKeysPath = "$HOME\.ssh\authorized_keys"
