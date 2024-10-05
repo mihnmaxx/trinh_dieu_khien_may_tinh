@@ -40,7 +40,7 @@ function Read-Config {
 
 # Hàm cập nhật script từ repository
 function Update-Script {
-    $repoUrl = "https://raw.githubusercontent.com/mihnmaxx/dieu_khien_may_tinh/refs/heads/main/setupSSH.ps1"
+    $repoUrl = "https://raw.githubusercontent.com/mihnmaxx/trinh_dieu_khien_may_tinh/refs/heads/main/trinh_dieu_khien_may_tinh/setupSSH.ps1"
     $tempFile = "$env:TEMP\setupSSH_new.ps1"
     
     try {
@@ -104,6 +104,12 @@ function Restore-SSHConfig {
 # Hàm gửi báo cáo trạng thái hệ thống
 function Send-SystemStatusReport {
     param($config)
+    $sshStatus = Test-NetConnection -ComputerName localhost -Port 22
+    if ($sshStatus.TcpTestSucceeded) {
+        $statusText = "Đang chạy"
+    } else {
+        $statusText = "Không chạy"
+    }
     $report = @"
 Báo cáo trạng thái hệ thống
 ---------------------------
@@ -111,7 +117,7 @@ Ngày: $(Get-Date)
 Tên máy: $env:COMPUTERNAME
 Địa chỉ IP: $((Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -like "*Ethernet*" }).IPAddress)
 IP công cộng: $((Invoke-WebRequest -Uri "http://ifconfig.me/ip" -UseBasicParsing).Content)
-Trạng thái SSH: $((Test-NetConnection -ComputerName localhost -Port 22).TcpTestSucceeded ? "Đang chạy" : "Không chạy")
+Trạng thái SSH: $statusText
 Dung lượng ổ đĩa: $((Get-PSDrive C).Free / 1GB) GB trống
 Bộ nhớ: $((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory / 1MB) GB trống
 "@
