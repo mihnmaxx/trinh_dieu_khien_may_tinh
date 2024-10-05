@@ -5,6 +5,8 @@ if (-not $isAdmin) {
     exit
 }
 
+$scriptPath = $MyInvocation.MyCommand.Path
+
 # Cấu hình
 $sshKeyType = "rsa"
 $sshKeyLength = 4096
@@ -184,16 +186,11 @@ function Main {
         $config = Read-Config
         
         # Cài đặt mô-đun gửi email nếu chưa có
-        if (-not (Get-Module -ListAvailable -Name PSSendMail)) {
-            try {
-                Install-Module -Name PSSendMail -Force -Scope CurrentUser -ErrorAction Stop
-                Write-Log "PSSendMail module installed"
-            } catch {
-                Write-Log "Error installing PSSendMail module: $_"
-                Write-Log "Attempting to install from PSGallery..."
-                Install-Module -Name PSSendMail -Force -Scope CurrentUser -Repository PSGallery
-            }
-        }        
+        if (-not (Get-Command Send-MailMessage -ErrorAction SilentlyContinue)) {
+            Write-Log "Send-MailMessage không khả dụng. Đang thêm PSGallery repository..."
+            Register-PSRepository -Default -ErrorAction SilentlyContinue
+            Install-Module -Name Microsoft.PowerShell.Utility -Force -Scope CurrentUser
+        }      
         
         # Lấy thông tin mạng tự động
         $networkInfo = Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -like "*Ethernet*" }
