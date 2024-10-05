@@ -6,7 +6,9 @@ if (-not $isAdmin) {
 }
 
 $scriptPath = $MyInvocation.MyCommand.Path
-
+if (-not $scriptPath) {
+    $scriptPath = $PSCommandPath
+}
 # Cấu hình
 $sshKeyType = "rsa"
 $sshKeyLength = 4096
@@ -220,7 +222,7 @@ function Main {
             $currentUser = $env:USERNAME
 
             # Sử dụng $currentUser thay vì $config.remoteUser
-            $session = New-PSSession -ComputerName $ipv4 -Credential (Get-Credential $currentUser)
+            $session = New-PSSession -ComputerName $ipv4 -Credential (Get-Credential) -Authentication Basic
             Invoke-Command -Session $session -ScriptBlock {
                 param($publicKey)
                 $authorizedKeysPath = "$HOME\.ssh\authorized_keys"
@@ -309,3 +311,12 @@ if ($args[0] -eq "-ReportOnly") {
 } else {
     Main
 }
+
+function Configure-WinRM {
+    Write-Log "Configuring WinRM..."
+    winrm quickconfig -quiet
+    Set-Item WSMan:\localhost\Client\TrustedHosts -Value $ipv4 -Force
+    Write-Log "WinRM configured and $ipv4 added to TrustedHosts"
+}
+
+Configure-WinRM
