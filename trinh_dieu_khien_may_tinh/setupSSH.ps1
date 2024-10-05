@@ -62,8 +62,6 @@ function Update-Script {
             } else {
                 Write-Log "Script is already the latest version."
             }
-        } else {
-            throw "Failed to download the script"
         }
     } catch {
         Write-Log "Error updating script: $_"
@@ -71,17 +69,18 @@ function Update-Script {
         Remove-Item -Path $tempFile -ErrorAction SilentlyContinue
     }
 }
-
 function Configure-WinRM {
     Write-Log "Configuring WinRM..."
-    Enable-PSRemoting -Force
+    if ((Get-Service WinRM).Status -ne 'Running') {
+        Start-Service WinRM
+    }
+    Enable-PSRemoting -Force -SkipNetworkProfileCheck
     Set-Item WSMan:\localhost\Client\TrustedHosts -Value * -Force
     Set-Item WSMan:\localhost\Service\Auth\Basic -Value $true
     Set-Item WSMan:\localhost\Service\AllowUnencrypted -Value $false
     New-NetFirewallRule -DisplayName "Allow WinRM HTTPS" -Direction Inbound -LocalPort 5986 -Protocol TCP -Action Allow
     Write-Log "WinRM configured successfully"
-}
-function Set-NetworkProfilePrivate {
+}function Set-NetworkProfilePrivate {
     $connections = Get-NetConnectionProfile
     foreach ($connection in $connections) {
         Set-NetConnectionProfile -InterfaceIndex $connection.InterfaceIndex -NetworkCategory Private
@@ -253,8 +252,32 @@ function Main {
         if (Test-Connection -ComputerName $ipv4 -Count 1 -Quiet) {
             $currentUser = $env:USERNAME
 
-            # Sử dụng HTTPS cho kết nối WinRM
-            $session = New-PSSession -ComputerName $ipv4 -Credential (Get-Credential) -UseSSL -SessionOption (New-PSSessionOption -SkipCACheck -SkipCNCheck)
+            $credential = Get-Credential -Message "Nhập thông tin đăng nhập cho máy từ xa"
+            $session = $null
+            $attempts = 0
+            $maxAttempts = 3
+
+            while ($null -eq $session -and $attempts -lt $maxAttempts) {
+                try {
+                    if ($attempts -eq 0) {
+                        $session = New-PSSession -ComputerName $ipv4 -Credential $credential -UseSSL -SessionOption (New-PSSessionOption -SkipCACheck -SkipCNCheck)
+                    } else {
+                        $session = New-PSSession -ComputerName $env:COMPUTERNAME -Credential $credential -UseSSL -SessionOption (New-PSSessionOption -SkipCACheck -SkipCNCheck)
+                    }
+                } catch {
+                    Write-Log "Attempt $($attempts + 1) failed: $_"
+                    $attempts++
+                    if ($attempts -lt $maxAttempts) {
+                        Write-Log "Retrying..."
+                        Start-Sleep -Seconds 5
+                    }
+                }
+            }
+
+            if ($null -eq $session) {
+                throw "Failed to create remote session after $maxAttempts attempts"
+            }
+
             Invoke-Command -Session $session -ScriptBlock {
                 param($publicKey)
                 $authorizedKeysPath = "$HOME\.ssh\authorized_keys"
@@ -334,8 +357,7 @@ function Main {
         Write-Log "An error occurred during setup: $_"
         Restore-SSHConfig
     }
-}
-# Kiểm tra xem script có được chạy với tham số -ReportOnly hay không
+}# Kiểm tra xem script có được chạy với tham số -ReportOnly hay không
 if ($args[0] -eq "-ReportOnly") {
     $config = Read-Config
     Send-SystemStatusReport -config $config
@@ -369,3 +391,10 @@ Set-Item WSMan:\localhost\Client\TrustedHosts -Value $ipv4 -Force
 
 Set-NetworkConnectionPrivate
 Configure-WinRM
+
+function Ensure-SSHBackup {
+    if (-not (Test-Path "$PSScriptRoot\ssh_backup_*.zip")) {
+        Backup-SSHConfig
+        Write-Log "Created new SSH configuration backup"
+    }
+}
