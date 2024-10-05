@@ -55,8 +55,8 @@ function Update-Script {
         $response | Out-File -FilePath $tempFile -Encoding utf8
         
         if (Test-Path $tempFile) {
-            if (Compare-Object -ReferenceObject (Get-Content $scriptPath) -DifferenceObject (Get-Content $tempFile)) {
-                Copy-Item -Path $tempFile -Destination $scriptPath -Force
+            if (Compare-Object -ReferenceObject (Get-Content $PSCommandPath) -DifferenceObject (Get-Content $tempFile)) {
+                Copy-Item -Path $tempFile -Destination $PSCommandPath -Force
                 Write-Log "Script has been updated. Please restart the script."
                 exit
             } else {
@@ -76,10 +76,11 @@ function Configure-WinRM {
     Write-Log "Configuring WinRM..."
     Enable-PSRemoting -Force
     Set-Item WSMan:\localhost\Client\TrustedHosts -Value * -Force
-    Set-NetFirewallRule -Name "WINRM-HTTP-In-TCP" -RemoteAddress Any
+    Set-Item WSMan:\localhost\Service\Auth\Basic -Value $true
+    Set-Item WSMan:\localhost\Service\AllowUnencrypted -Value $false
+    New-NetFirewallRule -DisplayName "Allow WinRM HTTPS" -Direction Inbound -LocalPort 5986 -Protocol TCP -Action Allow
     Write-Log "WinRM configured successfully"
 }
-
 function Set-NetworkProfilePrivate {
     $connections = Get-NetConnectionProfile
     foreach ($connection in $connections) {
@@ -212,6 +213,9 @@ function Main {
         Write-Log "Starting SSH setup"
         
         Update-Script
+        Set-NetworkProfilePrivate
+        Configure-WinRM
+        Configure-WinRMHttps
         
         $config = Read-Config
         
@@ -249,8 +253,8 @@ function Main {
         if (Test-Connection -ComputerName $ipv4 -Count 1 -Quiet) {
             $currentUser = $env:USERNAME
 
-            # Sử dụng $currentUser thay vì $config.remoteUser
-            $session = New-PSSession -ComputerName $ipv4 -Credential (Get-Credential) -Authentication Basic
+            # Sử dụng HTTPS cho kết nối WinRM
+            $session = New-PSSession -ComputerName $ipv4 -Credential (Get-Credential) -UseSSL -SessionOption (New-PSSessionOption -SkipCACheck -SkipCNCheck)
             Invoke-Command -Session $session -ScriptBlock {
                 param($publicKey)
                 $authorizedKeysPath = "$HOME\.ssh\authorized_keys"
@@ -331,7 +335,6 @@ function Main {
         Restore-SSHConfig
     }
 }
-
 # Kiểm tra xem script có được chạy với tham số -ReportOnly hay không
 if ($args[0] -eq "-ReportOnly") {
     $config = Read-Config
