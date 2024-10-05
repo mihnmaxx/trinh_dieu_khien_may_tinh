@@ -237,7 +237,6 @@ function Main {
             } else {
                 throw "Kiểm tra kết nối SSH thất bại"
             }
-        }
         
         # Tạo nội dung email chi tiết
         $emailBody = @"
