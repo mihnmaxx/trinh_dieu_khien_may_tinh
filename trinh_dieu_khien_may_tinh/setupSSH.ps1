@@ -200,7 +200,7 @@ function Main {
         
         Invoke-WithRetry -ScriptBlock {
             # Tạo cặp khóa SSH nếu chưa tồn tại
-            $$sshKeyDirectory = Select-SSHKeyDirectory
+            $sshKeyDirectory = Select-SSHKeyDirectory
             $sshKeyPath = Join-Path $sshKeyDirectory "id_$sshKeyType"
             
             if (-not (Test-Path -Path $sshKeyPath)) {
