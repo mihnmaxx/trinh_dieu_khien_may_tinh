@@ -315,8 +315,26 @@ if ($args[0] -eq "-ReportOnly") {
 function Configure-WinRM {
     Write-Log "Configuring WinRM..."
     winrm quickconfig -quiet
-    Set-Item WSMan:\localhost\Client\TrustedHosts -Value $ipv4 -Force
-    Write-Log "WinRM configured and $ipv4 added to TrustedHosts"
+    Set-Item WSMan:\localhost\Client\AllowUnencrypted -Value $true
+    Set-Item WSMan:\localhost\Service\AllowUnencrypted -Value $true
+    Write-Log "WinRM configured to allow unencrypted traffic"
 }
 
+function Set-NetworkConnectionPrivate {
+    $networkListManager = [Activator]::CreateInstance([Type]::GetTypeFromCLSID([Guid]"{DCB00C01-570F-4A9B-8D69-199FDBA5723B}"))
+    $connections = $networkListManager.GetNetworkConnections()
+    
+    foreach ($connection in $connections) {
+        $connection.GetNetwork().SetCategory(1)
+    }
+    Write-Log "Network connections set to Private"
+}
+
+$ipv4 = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -like "*Ethernet*" }).IPAddress
+if (-not $ipv4) {
+    throw "Unable to retrieve IPv4 address"
+}
+Set-Item WSMan:\localhost\Client\TrustedHosts -Value $ipv4 -Force
+
+Set-NetworkConnectionPrivate
 Configure-WinRM
