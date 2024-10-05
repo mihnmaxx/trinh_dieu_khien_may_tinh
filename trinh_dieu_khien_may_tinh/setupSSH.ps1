@@ -155,7 +155,7 @@ function Invoke-WithRetry {
     )
     
     $attempt = 1
-    $success = $false
+    $success = $false  # Declare $success here
     
     while (-not $success -and $attempt -le $MaxAttempts) {
         try {
@@ -206,12 +206,15 @@ function Main {
             if (-not (Test-Path -Path $sshKeyPath)) {
                 ssh-keygen -t $sshKeyType -b $sshKeyLength -f $sshKeyPath -q -N ""
                 Write-Log "New SSH key pair created in $sshKeyDirectory"
-            }            
             }
-            
-            # Sao chép khóa công khai vào máy chủ
-            $publicKeyPath = "$sshKeyPath.pub"
-            $publicKey = Get-Content -Path $publicKeyPath
+        }
+        
+        # Sao chép khóa công khai vào máy chủ
+        $publicKeyPath = "$sshKeyPath.pub"
+        $publicKey = Get-Content -Path $publicKeyPath
+        
+        # Add server connectivity check
+        if (Test-Connection -ComputerName $ipv4 -Count 1 -Quiet) {
             $session = New-PSSession -HostName $ipv4 -UserName $config.remoteUser
             Invoke-Command -Session $session -ScriptBlock {
                 param($publicKey)
@@ -223,6 +226,9 @@ function Main {
             } -ArgumentList $publicKey
             Remove-PSSession -Session $session
             Write-Log "Public key copied to server"
+        } else {
+            throw "Unable to connect to the server at $ipv4"
+        }
             
             # Kiểm tra kết nối SSH
             $testConnection = ssh -o BatchMode=yes -o ConnectTimeout=5 $config.remoteUser@$ipv4 echo "Kết nối SSH thành công"
