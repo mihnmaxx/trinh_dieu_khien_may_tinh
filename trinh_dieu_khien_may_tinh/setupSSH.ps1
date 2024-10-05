@@ -44,11 +44,16 @@ function Read-Config {
 
 # Hàm cập nhật script từ repository
 function Update-Script {
-    $repoUrl = "https://raw.githubusercontent.com/mihnmaxx/trinh_dieu_khien_may_tinh/refs/heads/main/trinh_dieu_khien_may_tinh/setupSSH.ps1"
-    $tempFile = "$env:TEMP\setupSSH.ps1"
+    $owner = "mihnmaxx"
+    $repo = "trinh_dieu_khien_may_tinh"
+    $path = "trinh_dieu_khien_may_tinh/setupSSH.ps1"
+    $apiUrl = "https://api.github.com/repos/$owner/$repo/contents/$path"
     
     try {
-        Invoke-WebRequest -Uri $repoUrl -OutFile $tempFile -ErrorAction Stop
+        $response = Invoke-RestMethod -Uri $apiUrl -Headers @{Accept = "application/vnd.github.v3.raw"}
+        $tempFile = "$env:TEMP\setupSSH.ps1"
+        $response | Out-File -FilePath $tempFile -Encoding utf8
+        
         if (Test-Path $tempFile) {
             if (Compare-Object -ReferenceObject (Get-Content $scriptPath) -DifferenceObject (Get-Content $tempFile)) {
                 Copy-Item -Path $tempFile -Destination $scriptPath -Force
@@ -65,6 +70,30 @@ function Update-Script {
     } finally {
         Remove-Item -Path $tempFile -ErrorAction SilentlyContinue
     }
+}
+
+function Configure-WinRM {
+    Write-Log "Configuring WinRM..."
+    Enable-PSRemoting -Force
+    Set-Item WSMan:\localhost\Client\TrustedHosts -Value * -Force
+    Set-NetFirewallRule -Name "WINRM-HTTP-In-TCP" -RemoteAddress Any
+    Write-Log "WinRM configured successfully"
+}
+
+function Set-NetworkProfilePrivate {
+    $connections = Get-NetConnectionProfile
+    foreach ($connection in $connections) {
+        Set-NetConnectionProfile -InterfaceIndex $connection.InterfaceIndex -NetworkCategory Private
+    }
+    Write-Log "Network connections set to Private"
+}
+
+function Configure-WinRMHttps {
+    $cert = New-SelfSignedCertificate -DnsName $env:COMPUTERNAME -CertStoreLocation Cert:\LocalMachine\My
+    $thumbprint = $cert.Thumbprint
+    $command = "winrm create winrm/config/Listener?Address=*+Transport=HTTPS '@{Hostname=`"$env:COMPUTERNAME`"; CertificateThumbprint=`"$thumbprint`"}'"
+    Invoke-Expression $command
+    Write-Log "WinRM HTTPS listener configured"
 }
 
 function Select-SSHKeyDirectory {
@@ -94,8 +123,7 @@ function Set-CustomScheduledTask {
         Write-Log "Deleted old task '$TaskName' for update"
     }
     
-    $action = New-ScheduledTaskAction -Execute $Command -Argument $Arguments
-    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RunOnlyIfNetworkAvailable
+    $action = New-ScheduledTaskAction -Execute $Command -Argument $Arguments    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RunOnlyIfNetworkAvailable
     $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
     
     Register-ScheduledTask -TaskName $TaskName -Description $Description -Action $action -Trigger $Trigger -Settings $settings -Principal $principal -Force
