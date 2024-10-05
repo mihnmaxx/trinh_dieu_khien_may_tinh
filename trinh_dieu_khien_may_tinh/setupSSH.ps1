@@ -41,7 +41,7 @@ function Read-Config {
 # Hàm cập nhật script từ repository
 function Update-Script {
     $repoUrl = "https://raw.githubusercontent.com/mihnmaxx/trinh_dieu_khien_may_tinh/refs/heads/main/trinh_dieu_khien_may_tinh/setupSSH.ps1"
-    $tempFile = "$env:TEMP\setupSSH_new.ps1"
+    $tempFile = "$env:TEMP\setupSSH.ps1"
     
     try {
         Invoke-WebRequest -Uri $repoUrl -OutFile $tempFile
@@ -61,19 +61,13 @@ function Update-Script {
 
 function Select-SSHKeyDirectory {
     $defaultPath = "$HOME\.ssh"
-    $customPath = Read-Host "Nhập đường dẫn cho thư mục chứa khóa SSH (để trống để sử dụng $defaultPath)"
     
-    if ([string]::IsNullOrWhiteSpace($customPath)) {
-        $selectedPath = $defaultPath
-    } else {
-        $selectedPath = $customPath
+    if (-not (Test-Path $defaultPath)) {
+        New-Item -ItemType Directory -Path $defaultPath -Force | Out-Null
     }
     
-    if (-not (Test-Path $selectedPath)) {
-        New-Item -ItemType Directory -Path $selectedPath -Force | Out-Null
-    }
-    
-    return $selectedPath
+    Write-Log "Đã chọn thư mục chứa khóa SSH: $defaultPath"
+    return $defaultPath
 }
 
 # Hàm tạo hoặc cập nhật tác vụ lập lịch
