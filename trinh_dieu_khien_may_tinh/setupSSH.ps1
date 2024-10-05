@@ -59,6 +59,23 @@ function Update-Script {
     }
 }
 
+function Select-SSHKeyDirectory {
+    $defaultPath = "$HOME\.ssh"
+    $customPath = Read-Host "Nhập đường dẫn cho thư mục chứa khóa SSH (để trống để sử dụng $defaultPath)"
+    
+    if ([string]::IsNullOrWhiteSpace($customPath)) {
+        $selectedPath = $defaultPath
+    } else {
+        $selectedPath = $customPath
+    }
+    
+    if (-not (Test-Path $selectedPath)) {
+        New-Item -ItemType Directory -Path $selectedPath -Force | Out-Null
+    }
+    
+    return $selectedPath
+}
+
 # Hàm tạo hoặc cập nhật tác vụ lập lịch
 function Set-CustomScheduledTask {
     param(
@@ -183,10 +200,13 @@ function Main {
         
         Invoke-WithRetry -ScriptBlock {
             # Tạo cặp khóa SSH nếu chưa tồn tại
-            $sshKeyPath = "$HOME\.ssh\id_$sshKeyType"
+            $$sshKeyDirectory = Select-SSHKeyDirectory
+            $sshKeyPath = Join-Path $sshKeyDirectory "id_$sshKeyType"
+            
             if (-not (Test-Path -Path $sshKeyPath)) {
                 ssh-keygen -t $sshKeyType -b $sshKeyLength -f $sshKeyPath -q -N ""
-                Write-Log "New SSH key pair created"
+                Write-Log "New SSH key pair created in $sshKeyDirectory"
+            }            
             }
             
             # Sao chép khóa công khai vào máy chủ
